@@ -80,7 +80,7 @@ def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epoch
     optimizer = tf.keras.optimizers.Adam(learning_rate)
 
     minibatches = dataset.batch(mini_batch_size).prefetch(8)
-    test_minibatches = dataset.batch(mini_batch_size).prefetch(8)
+    test_minibatches = dataset_test.batch(mini_batch_size).prefetch(8)
 
     costs = []
     train_acc = []
