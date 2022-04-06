@@ -1,7 +1,6 @@
 import h5py
-import numpy as np
-import tensorflow.keras
 import tensorflow as tf
+from pathlib import Path
 
 
 def normalize(image):
@@ -16,8 +15,8 @@ def one_hot_matrix(labels, depth=6):
 
 
 def get_dataset():
-    train_dataset = h5py.File(r'C:\Users\RuslanNN\PycharmProjects\learning\coursera_dl\dataset\train_signs.h5', "r")
-    test_dataset = h5py.File(r'C:\Users\RuslanNN\PycharmProjects\learning\coursera_dl\dataset\test_signs.h5', "r")
+    train_dataset = h5py.File(Path(__file__).parent.parent / 'dataset' / 'train_signs.h5', "r")
+    test_dataset = h5py.File(Path(__file__).parent.parent / 'dataset' / 'test_signs.h5', "r")
 
     x_train_set = tf.data.Dataset.from_tensor_slices(train_dataset['train_set_x'])
     y_train_set = tf.data.Dataset.from_tensor_slices(train_dataset['train_set_y'])
