@@ -1,6 +1,8 @@
 import h5py
 import tensorflow as tf
+import tensorflow.keras
 from pathlib import Path
+import numpy as np
 
 
 def normalize(image):
@@ -12,6 +14,14 @@ def normalize(image):
 def one_hot_matrix(labels, depth=6):
     one_hot = tf.reshape(tf.one_hot(labels, depth, axis=0), [-1])
     return one_hot
+
+
+def batch_normalization_handmade(Z, zeta, beta):
+    Z = Z - Z.numpy().mean()
+    sigma = tf.sqrt(tf.math.reduce_sum(tf.math.square(Z)))
+    Z = Z / (sigma + 10e-8)
+    Z = zeta * Z + beta
+    return Z
 
 
 def get_dataset():
@@ -36,18 +46,22 @@ def initialize_parameters_he(layers, X):
     parameters = {}
     for i in range(1, len(layers)):
         parameters['W' + str(i)] = tf.Variable(initializer(shape=[layers[i], layers[i - 1]]))
+        parameters['z' + str(i)] = tf.Variable(initializer(shape=[1]))
         parameters['b' + str(i)] = tf.Variable(initializer(shape=[layers[i], 1]))
 
     return parameters
 
 
-def forward_prop(X, parameters):
-    L = len(parameters) // 2
+def forward_prop(X, parameters, mode='train'):
+    L = len(parameters) // 3
     A_prev = X
     Z = None
 
     for l in range(1, L + 1):
         Z = tf.math.add(tf.linalg.matmul(parameters['W' + str(l)], A_prev), parameters['b' + str(l)])
+        # TODO: implement test mode for bn
+        Z = tf.nn.batch_normalization(Z, mean=0, variance=1, offset=parameters['z' + str(l)],
+                                      scale=parameters['b' + str(l)], variance_epsilon=10e-8)
         if l == L:
             return Z
         else:
@@ -61,7 +75,8 @@ def compute_cost(X, Y):
     return cost
 
 
-def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epochs=10000, mini_batch_size=32,
+def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epochs=1000000
+          , mini_batch_size=32,
           print_cost=True):
     parameters = initialize_parameters_he(layer_structure, X)
 
@@ -108,8 +123,11 @@ def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epoch
 
             # We evaluate the test set every 10 epochs to avoid computational overhead
             for (minibatch_x, minibatch_y) in test_minibatches:
-                ZL = forward_prop(tf.transpose(minibatch_x), parameters)
+                ZL = forward_prop(tf.transpose(minibatch_x), parameters, mode='infer')
                 test_accuracy.update_state(minibatch_y, tf.transpose(ZL))
+                if test_accuracy.result().numpy() > 0.85:
+                    np.savez(r'C:\Users\RuslanNN\PycharmProjects\learning\coursera_dl\mock_models\parameters.npz',
+                             **parameters)
             print("Test_accuracy:", test_accuracy.result())
 
             costs.append(epoch_cost)
@@ -117,6 +135,8 @@ def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epoch
             test_acc.append(test_accuracy.result())
             test_accuracy.reset_states()
 
+    if test_acc[-1].numpy() > 0.85:
+        np.savez(r'C:\Users\RuslanNN\PycharmProjects\learning\coursera_dl\mock_models\parameters.npz', **parameters)
     return parameters, costs, train_acc, test_acc
 
 
