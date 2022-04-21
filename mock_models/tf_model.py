@@ -16,14 +16,6 @@ def one_hot_matrix(labels, depth=6):
     return one_hot
 
 
-def batch_normalization_handmade(Z, zeta, beta):
-    Z = Z - Z.numpy().mean()
-    sigma = tf.sqrt(tf.math.reduce_sum(tf.math.square(Z)))
-    Z = Z / (sigma + 10e-8)
-    Z = zeta * Z + beta
-    return Z
-
-
 def get_dataset():
     train_dataset = h5py.File(Path(__file__).parent.parent / 'dataset' / 'train_signs.h5', "r")
     test_dataset = h5py.File(Path(__file__).parent.parent / 'dataset' / 'test_signs.h5', "r")
@@ -46,37 +38,29 @@ def initialize_parameters_he(layers, X):
     parameters = {}
     for i in range(1, len(layers)):
         parameters['W' + str(i)] = tf.Variable(initializer(shape=[layers[i], layers[i - 1]]))
-        parameters['z' + str(i)] = tf.Variable(initializer(shape=[1]))
         parameters['b' + str(i)] = tf.Variable(initializer(shape=[layers[i], 1]))
 
     return parameters
 
 
 def forward_prop(X, parameters, mode='train'):
-    L = len(parameters) // 3
+    L = len(parameters) // 2
     A_prev = X
-    Z = None
 
     for l in range(1, L + 1):
         Z = tf.math.add(tf.linalg.matmul(parameters['W' + str(l)], A_prev), parameters['b' + str(l)])
-        # TODO: implement test mode for bn
-        Z = tf.nn.batch_normalization(Z, mean=0, variance=1, offset=parameters['z' + str(l)],
-                                      scale=parameters['b' + str(l)], variance_epsilon=10e-8)
         if l == L:
             return Z
         else:
             A_prev = tf.keras.activations.relu(Z)
 
-    return Z
-
 
 def compute_cost(X, Y):
-    cost = tf.reduce_mean(tf.keras.losses.categorical_crossentropy(tf.transpose(Y), tf.transpose(X), from_logits=True))
+    cost = tf.reduce_mean(tf.keras.losses.categorical_crossentropy(Y, X, axis=0, from_logits=True))
     return cost
 
 
-def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epochs=1000000
-          , mini_batch_size=32,
+def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epochs=1000000, mini_batch_size=32,
           print_cost=True):
     parameters = initialize_parameters_he(layer_structure, X)
 
