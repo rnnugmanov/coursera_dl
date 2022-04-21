@@ -1,22 +1,18 @@
-import h5py
 import tensorflow as tf
 import tensorflow.keras
 from pathlib import Path
 import numpy as np
 
+TRANSPOSE = False
 
 def normalize(image):
     image = tf.cast(image, tf.float32) / 255.
-    image = tf.reshape(image, [-1])
     return image
 
 
-def one_hot_matrix(labels, depth=6):
-    one_hot = tf.reshape(tf.one_hot(labels, depth, axis=0), [-1])
-    return one_hot
-
-
 def get_dataset():
+    import h5py
+
     train_dataset = h5py.File(Path(__file__).parent.parent / 'dataset' / 'train_signs.h5', "r")
     test_dataset = h5py.File(Path(__file__).parent.parent / 'dataset' / 'test_signs.h5', "r")
 
@@ -33,30 +29,40 @@ def get_dataset():
 
 
 def initialize_parameters_he(layers, X):
-    layers.insert(0, X.element_spec.shape[0])
+    layers.insert(0, np.prod(X.element_spec.shape))
     initializer = tf.keras.initializers.GlorotNormal(seed=1)
     parameters = {}
     for i in range(1, len(layers)):
-        parameters['W' + str(i)] = tf.Variable(initializer(shape=[layers[i], layers[i - 1]]))
-        parameters['b' + str(i)] = tf.Variable(initializer(shape=[layers[i], 1]))
-
+        W_shape = [layers[i], layers[i - 1]] if TRANSPOSE else [layers[i - 1], layers[i]]
+        b_shape = [layers[i], 1] if TRANSPOSE else [1, layers[i]]
+        parameters['W' + str(i)] = tf.Variable(initializer(shape=W_shape))
+        parameters['b' + str(i)] = tf.Variable(initializer(shape=b_shape))
     return parameters
 
 
-def forward_prop(X, parameters, mode='train'):
-    L = len(parameters) // 2
-    A_prev = X
+def forward_prop(X, parameters):
+    A_prev = tf.reshape(X, [X.shape[0], -1])
 
-    for l in range(1, L + 1):
-        Z = tf.math.add(tf.linalg.matmul(parameters['W' + str(l)], A_prev), parameters['b' + str(l)])
-        if l == L:
-            return Z
-        else:
-            A_prev = tf.keras.activations.relu(Z)
+    if TRANSPOSE:
+        A_prev = tf.transpose(A_prev)
+    mm = lambda a, b: tf.linalg.matmul(b, a) if TRANSPOSE else tf.linalg.matmul(a, b)
+
+    A_prev = tf.keras.activations.relu(
+        tf.math.add(
+            mm(A_prev, parameters['W' + str(1)]), parameters['b' + str(1)]))
+    A_prev = tf.keras.activations.relu(
+        tf.math.add(
+            mm(A_prev, parameters['W' + str(2)]), parameters['b' + str(2)]))
+
+    A_prev = tf.math.add(mm(A_prev, parameters['W' + str(3)]), parameters['b' + str(3)])
+
+    if TRANSPOSE:
+        A_prev = tf.transpose(A_prev)
+    return A_prev
 
 
 def compute_cost(X, Y):
-    cost = tf.reduce_mean(tf.keras.losses.categorical_crossentropy(Y, X, axis=0, from_logits=True))
+    cost = tf.reduce_sum(tf.keras.losses.sparse_categorical_crossentropy(Y, X, from_logits=True))
     return cost
 
 
@@ -64,14 +70,11 @@ def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epoch
           print_cost=True):
     parameters = initialize_parameters_he(layer_structure, X)
 
-    Y = Y.map(one_hot_matrix)
-    Y_test = Y_test.map(one_hot_matrix)
-
     dataset = tf.data.Dataset.zip((X, Y))
     dataset_test = tf.data.Dataset.zip((X_test, Y_test))
 
-    train_accuracy = tf.keras.metrics.CategoricalAccuracy()
-    test_accuracy = tf.keras.metrics.CategoricalAccuracy()
+    train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+    test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
 
     m = dataset.cardinality().numpy()
 
@@ -90,12 +93,12 @@ def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epoch
 
         for (minibatch_x, minibatch_y) in minibatches:
             with tf.GradientTape() as tape:
-                ZL = forward_prop(tf.transpose(minibatch_x), parameters)
-                cost = compute_cost(ZL, tf.transpose(minibatch_y))
+                ZL = forward_prop(minibatch_x, parameters)
+                cost = compute_cost(ZL, minibatch_y)
 
             grads = tape.gradient(cost, parameters)
             optimizer.apply_gradients(zip(grads.values(), parameters.values()))
-            train_accuracy.update_state(minibatch_y, tf.transpose(ZL))
+            train_accuracy.update_state(minibatch_y, ZL)
 
             epoch_cost += cost
 
@@ -107,8 +110,8 @@ def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epoch
 
             # We evaluate the test set every 10 epochs to avoid computational overhead
             for (minibatch_x, minibatch_y) in test_minibatches:
-                ZL = forward_prop(tf.transpose(minibatch_x), parameters, mode='infer')
-                test_accuracy.update_state(minibatch_y, tf.transpose(ZL))
+                ZL = forward_prop(minibatch_x, parameters)
+                test_accuracy.update_state(minibatch_y, ZL)
                 if test_accuracy.result().numpy() > 0.85:
                     np.savez(r'C:\Users\RuslanNN\PycharmProjects\learning\coursera_dl\mock_models\parameters.npz',
                              **parameters)
@@ -129,4 +132,3 @@ if '__main__' == __name__:
     x_train, y_train, x_test, y_test = get_dataset()
     parameters, costs, train_accuracy, test_accuracy = model(x_train, y_train, x_test, y_test, layer_dims)
     print(train_accuracy, test_accuracy)
-
