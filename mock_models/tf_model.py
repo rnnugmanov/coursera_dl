@@ -5,6 +5,12 @@ import numpy as np
 
 TRANSPOSE = False
 
+
+def one_hot_matrix(labels, depth=6):
+    one_hot = tf.reshape(tf.one_hot(labels, depth, axis=0), [-1])
+    return one_hot
+
+
 def normalize(image):
     image = tf.cast(image, tf.float32) / 255.
     return image
@@ -40,6 +46,19 @@ def initialize_parameters_he(layers, X):
     return parameters
 
 
+def read_parameters():
+    np_params = np.load(r'C:\Users\Unicorn\git\coursera_dl\tf_sausage\parameters_true.npz')
+    parameters = {k: v for k, v in np_params.items()}
+
+    for param in parameters:
+        if not TRANSPOSE:
+            parameters[param] = tf.Variable(tf.transpose(parameters[param]))
+        else:
+            parameters[param] = tf.Variable(parameters[param])
+
+    return parameters
+
+
 def forward_prop(X, parameters):
     A_prev = tf.reshape(X, [X.shape[0], -1])
 
@@ -58,17 +77,23 @@ def forward_prop(X, parameters):
 
     if TRANSPOSE:
         A_prev = tf.transpose(A_prev)
+    # print("Forward res:")
+    # for b, batch in enumerate(A_prev):
+    #     print("batch #" + str(b) + " " + ", ".join(map(lambda x: str(x.numpy()), batch)))
+    # import sys
+    # sys.exit(0)
     return A_prev
 
 
 def compute_cost(X, Y):
-    cost = tf.reduce_sum(tf.keras.losses.sparse_categorical_crossentropy(Y, X, from_logits=True))
+    cost = tf.reduce_mean(tf.keras.losses.sparse_categorical_crossentropy(Y, X, from_logits=True))
     return cost
 
 
 def model(X, Y, X_test, Y_test, layer_structure, learning_rate=0.0001, num_epochs=1000000, mini_batch_size=32,
           print_cost=True):
-    parameters = initialize_parameters_he(layer_structure, X)
+    # parameters = initialize_parameters_he(layer_structure, X)
+    parameters = read_parameters()
 
     dataset = tf.data.Dataset.zip((X, Y))
     dataset_test = tf.data.Dataset.zip((X_test, Y_test))
